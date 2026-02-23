@@ -1,0 +1,301 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 23,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "base",
+            "description": "Base configuration for all presets",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "RADIO_INTERFACE_QSPI": "OFF",
+                "RPC_ENABLED": "OFF",
+                "RTOS_ENABLED": "OFF",
+                "SWC_EXT_API_ENABLE": "OFF",
+                "WPS_ENABLE_PHY_STATS_PER_BANDS": "OFF"
+            }
+        },
+        {
+            "name": "evk1.4",
+            "description": "Base configuration evk1.4 target",
+            "hidden": true,
+            "cacheVariables": {
+                "HARDWARE": "EVK",
+                "MCU_DRIVER": "STMG4XX"
+            }
+        },
+        {
+            "name": "quasar",
+            "description": "Base configuration quasar target",
+            "hidden": true,
+            "cacheVariables": {
+                "HARDWARE": "QUASAR",
+                "MCU_DRIVER": "STMU5XX"
+            }
+        },
+        {
+            "name": "audio-bidirectional-evk1.4",
+            "inherits": [
+                "base",
+                "evk1.4"
+            ],
+            "description": "Audio bidirectional example for SR10xx with EVK1.4",
+            "cacheVariables": {
+                "APP": "Audio-Bidirectional",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "audio-bidirectional-quasar",
+            "inherits": [
+                "base",
+                "quasar"
+            ],
+            "description": "Audio bidirectional example for SR10xx with Quasar",
+            "cacheVariables": {
+                "APP": "Audio-Bidirectional",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "audio-unidirectional-evk1.4",
+            "inherits": [
+                "base",
+                "evk1.4"
+            ],
+            "description": "Audio unidirectional example for SR10xx with EVK1.4",
+            "cacheVariables": {
+                "APP": "Audio-Unidirectional",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "audio-unidirectional-quasar",
+            "inherits": [
+                "base",
+                "quasar"
+            ],
+            "description": "Audio unidirectional example for SR10xx with Quasar",
+            "cacheVariables": {
+                "APP": "Audio-Unidirectional",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "connection-priority-evk1.4",
+            "description": "Connection priority example for SR10xx with EVK1.4",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "evk1.4"
+            ],
+            "cacheVariables": {
+                "APP": "Connection-Priority",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "connection-priority-quasar",
+            "description": "Connection priority example for SR10xx with Quasar",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "quasar"
+            ],
+            "cacheVariables": {
+                "APP": "Connection-Priority",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "datalink-evk1.4",
+            "description": "Datalink example for SR10xx with EVK1.4",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "evk1.4"
+            ],
+            "cacheVariables": {
+                "APP": "Datalink",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "datalink-quasar",
+            "description": "Datalink example for SR10xx with Quasar",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "quasar"
+            ],
+            "cacheVariables": {
+                "APP": "Datalink",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "fragmentation-evk1.4",
+            "description": "Fragmentation example for SR10xx with EVK1.4",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "evk1.4"
+            ],
+            "cacheVariables": {
+                "APP": "Fragmentation",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "fragmentation-quasar",
+            "description": "Fragmentation example for SR10xx with Quasar",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "quasar"
+            ],
+            "cacheVariables": {
+                "APP": "Fragmentation",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "hello-world-evk1.4",
+            "description": "Hello-World example for SR10xx with EVK1.4",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "evk1.4"
+            ],
+            "cacheVariables": {
+                "APP": "Hello-World",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "hello-world-quasar",
+            "description": "Hello-World example for SR10xx with Quasar",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "quasar"
+            ],
+            "cacheVariables": {
+                "APP": "Hello-World",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "hello-world-rtos-evk1.4",
+            "description": "Hello-World RTOS example for SR10xx with EVK1.4",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "evk1.4"
+            ],
+            "cacheVariables": {
+                "APP": "Hello-World-RTOS",
+                "TRANSCEIVER": "SR1000",
+                "RTOS_ENABLED": "ON"
+            }
+        },
+        {
+            "name": "hello-world-rtos-quasar",
+            "description": "Hello-World RTOS example for SR10xx with Quasar",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "quasar"
+            ],
+            "cacheVariables": {
+                "APP": "Hello-World-RTOS",
+                "TRANSCEIVER": "SR1000",
+                "RTOS_ENABLED": "ON"
+            }
+        },
+        {
+            "name": "star-network-evk1.4",
+            "description": "Star Network example for SR10xx with EVK1.4",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "evk1.4"
+            ],
+            "cacheVariables": {
+                "APP": "Star-Network",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "star-network-quasar",
+            "description": "Star Network example for SR10xx with Quasar",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "quasar"
+            ],
+            "cacheVariables": {
+                "APP": "Star-Network",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "bsp-validator-tool-evk1.4",
+            "description": "BSP Validator tool with EVK1.4",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "evk1.4"
+            ],
+            "cacheVariables": {
+                "APP": "BSP-validator",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "bsp-validator-tool-quasar",
+            "description": "BSP Validator tool with Quasar",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "quasar"
+            ],
+            "cacheVariables": {
+                "APP": "BSP-validator",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "profiler-tool-evk1.4",
+            "description": "Profiler tool with EVK1.4",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "evk1.4"
+            ],
+            "cacheVariables": {
+                "APP": "Profiler",
+                "TRANSCEIVER": "SR1000"
+            }
+        },
+        {
+            "name": "profiler-tool-quasar",
+            "description": "Profiler tool with Quasar",
+            "hidden": false,
+            "inherits": [
+                "base",
+                "quasar"
+            ],
+            "cacheVariables": {
+                "APP": "Profiler",
+                "TRANSCEIVER": "SR1000"
+            }
+        }
+    ]
+}
