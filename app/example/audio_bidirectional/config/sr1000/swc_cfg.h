@@ -34,7 +34,7 @@
 // clang-format on
 
 /* Channels */
-#define CHANNEL_FREQ     {167, 174, 181, 188}
+#define CHANNEL_FREQ     {88, 105, 122, 139}
 #define CHANNEL_SEQUENCE {0, 1, 2, 3}
 
 /* CCA settings */

@@ -19,7 +19,7 @@
 #define COORD_TIMESLOTS {MAIN_TIMESLOT(0)}
 
 /* Channels */
-#define CHANNEL_FREQ     {164, 176, 188, 200}
+#define CHANNEL_FREQ     {88, 105, 122, 139}
 #define CHANNEL_SEQUENCE {0, 1, 2, 3}
 
 /* CCA settings */

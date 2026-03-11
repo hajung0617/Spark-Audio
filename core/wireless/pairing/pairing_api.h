@@ -22,7 +22,7 @@ extern "C" {
  *
  *  @note The channel frequency are in increments of 40.96 MHz.
  */
-#define PAIRING_DEFAULT_CHANNEL_FREQUENCY 195
+#define PAIRING_DEFAULT_CHANNEL_FREQUENCY 110
 
 /* TYPES **********************************************************************/
 /** @brief Pairing parameters from the application.

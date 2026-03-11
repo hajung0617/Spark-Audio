@@ -41,7 +41,7 @@ extern "C" {
 #define BIDIR_TIMESLOTS_1 {MAIN_TIMESLOT(1)}
 
 /* Channels */
-#define CHANNEL_FREQ     {164, 176, 188, 200}
+#define CHANNEL_FREQ     {88, 105, 122, 139}
 #define CHANNEL_SEQUENCE {0, 1, 2, 3}
 
 /* Packet transmission frequency in us over the air, ensuring alignment with the radio's schedules. */
