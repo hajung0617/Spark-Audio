@@ -88,13 +88,22 @@ typedef enum connection_priority {
 
 /** @brief Data used for transmitting and receiving link margin and button state.
  */
+typedef enum data_msg_type {
+    DATA_MSG_NORMAL = 0,
+    DATA_MSG_RTT_PING = 1,
+    DATA_MSG_RTT_PONG = 2,
+} data_msg_type_t;
+
 typedef struct user_data {
     bool button_state;
     uint8_t link_margin;
-    uint32_t seq;
-    uint32_t tx_tick;
-} user_data_t;
 
+    uint8_t msg_type;        // NORMAL / RTT_PING / RTT_PONG
+    uint8_t reserved[3];     // alignment용 (필수는 아니지만 권장)
+
+    uint32_t seq;            // RTT 식별용
+    uint32_t origin_tick;    // PING을 보낸 측(Coord)의 로컬 출발 시각
+} user_data_t;
 /* PRIVATE GLOBALS ************************************************************/
 /* **** Audio Core **** */
 /** Sample format of audio samples produced or received by the codec of the Coordinator.
@@ -114,8 +123,6 @@ static const sac_sample_format_t BACK_CHANNEL_SAC_SAMPLE_FORMAT = {
     .sample_encoding = SAC_SAMPLE_PACKED,
 };
 
-static uint32_t g_data_seq = 0;
-
 static volatile uint32_t g_last_seq = 0;
 static volatile uint32_t g_last_tx_tick = 0;
 static volatile uint32_t g_last_rx_tick = 0;
@@ -125,6 +132,17 @@ static volatile uint32_t g_latency_count = 0;
 static volatile uint32_t g_latency_min_ms = 0xFFFFFFFF;
 static volatile uint32_t g_latency_max_ms = 0;
 static volatile uint64_t g_latency_sum_ms = 0;
+
+static uint32_t g_rtt_seq = 0;
+static volatile bool g_rtt_waiting_reply = false;
+static volatile uint32_t g_rtt_last_ping_seq = 0;
+static volatile uint32_t g_rtt_last_ping_tick = 0;
+
+static volatile uint32_t g_last_rtt_ms = 0;
+static volatile uint32_t g_rtt_count = 0;
+static volatile uint32_t g_rtt_min_ms = 0xFFFFFFFF;
+static volatile uint32_t g_rtt_max_ms = 0;
+static volatile uint64_t g_rtt_sum_ms = 0;
 
 static uint8_t audio_memory_pool[SAC_MEM_POOL_SIZE];
 static sac_pipeline_t *main_channel_sac_pipeline;
@@ -641,51 +659,47 @@ static void conn_rx_data_success_callback(void *conn)
     swc_error_t swc_err = SWC_ERR_NONE;
     user_data_t received_user_data = {0};
     uint16_t read_data_size;
-    uint32_t rx_tick;
+    uint32_t now_tick;
 
     (void)conn;
 
-    /* Get received payload. */
     read_data_size = wireless_read_data(&received_user_data, sizeof(received_user_data), &swc_err);
     ASSERT_SWC_STATUS(swc_err);
 
-    if (read_data_size > 0) {
-        rx_tick = facade_get_tick_ms();
-
-        g_last_seq = received_user_data.seq;
-        g_last_tx_tick = received_user_data.tx_tick;
-        g_last_rx_tick = rx_tick;
-        int32_t signed_diff;
-
-        signed_diff = (int32_t)rx_tick - (int32_t)received_user_data.tx_tick;
-
-        if (signed_diff < 0) {
-            g_last_latency_ms = (uint32_t)(-signed_diff);
-        } else {
-            g_last_latency_ms = (uint32_t)signed_diff;
-        }
-
-        g_latency_count++;
-        g_latency_sum_ms += g_last_latency_ms;
-
-        if (g_last_latency_ms < g_latency_min_ms) {
-            g_latency_min_ms = g_last_latency_ms;
-        }
-        if (g_last_latency_ms > g_latency_max_ms) {
-            g_latency_max_ms = g_last_latency_ms;
-        }
-
-        /* Depending on the requested button state from the Node, the specified LED turns on or off. */
-        if (received_user_data.button_state == false) {
-            facade_empty_payload_received_status();
-        } else {
-            facade_payload_received_status();
-        }
-
-        /* The fallback state is updated. */
-        sac_fallback_set_rx_link_margin(&main_channel_fallback_instance, received_user_data.link_margin, &sac_status);
-        ASSERT_SAC_STATUS(sac_status);
+    if (read_data_size == 0) {
+        return;
     }
+
+    now_tick = facade_get_tick_ms();
+
+    if (received_user_data.msg_type == DATA_MSG_RTT_PONG) {
+        if (g_rtt_waiting_reply && (received_user_data.seq == g_rtt_last_ping_seq)) {
+            uint32_t rtt_ms = now_tick - received_user_data.origin_tick;
+
+            g_last_seq = received_user_data.seq;
+            g_last_tx_tick = received_user_data.origin_tick;
+            g_last_rx_tick = now_tick;
+            g_last_latency_ms = rtt_ms;
+
+            g_latency_count++;
+            g_latency_sum_ms += rtt_ms;
+            if (rtt_ms < g_latency_min_ms) g_latency_min_ms = rtt_ms;
+            if (rtt_ms > g_latency_max_ms) g_latency_max_ms = rtt_ms;
+
+            g_rtt_waiting_reply = false;
+        }
+    }
+
+    if (received_user_data.button_state == false) {
+        facade_empty_payload_received_status();
+    } else {
+        facade_payload_received_status();
+    }
+
+    sac_fallback_set_rx_link_margin(&main_channel_fallback_instance,
+                                    received_user_data.link_margin,
+                                    &sac_status);
+    ASSERT_SAC_STATUS(sac_status);
 }
 
 /** @brief Initialize the Audio Core.
@@ -1360,18 +1374,29 @@ static void data_callback(void)
     swc_error_t swc_err = SWC_ERR_NONE;
     swc_fallback_info_t fallback_info = {0};
     user_data_t transmitted_user_data = {0};
+    static uint32_t ping_div = 0;
 
-    /* Update the link margin. */
     fallback_info = swc_connection_get_fallback_info(rx_audio_conn, &swc_err);
     ASSERT_SWC_STATUS(swc_err);
 
-    /* Send the button state and the link margin to the Node. */
     transmitted_user_data.link_margin = fallback_info.link_margin;
     transmitted_user_data.button_state = facade_read_button_state();
+    transmitted_user_data.msg_type = DATA_MSG_NORMAL;
+    transmitted_user_data.seq = 0;
+    transmitted_user_data.origin_tick = 0;
 
-    /* Latency measurement fields */
-    transmitted_user_data.seq = g_data_seq++;
-    transmitted_user_data.tx_tick = facade_get_tick_ms();
+    ping_div++;
+    if ((ping_div >= 10) && (g_rtt_waiting_reply == false)) {  // 10ms * 10 = 100ms
+        ping_div = 0;
+
+        transmitted_user_data.msg_type = DATA_MSG_RTT_PING;
+        transmitted_user_data.seq = g_rtt_seq++;
+        transmitted_user_data.origin_tick = facade_get_tick_ms();
+
+        g_rtt_waiting_reply = true;
+        g_rtt_last_ping_seq = transmitted_user_data.seq;
+        g_rtt_last_ping_tick = transmitted_user_data.origin_tick;
+    }
 
     wireless_send_data(&transmitted_user_data, sizeof(transmitted_user_data), &swc_err);
 }

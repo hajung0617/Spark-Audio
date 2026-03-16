@@ -83,11 +83,21 @@ typedef enum connection_priority {
 
 /** @brief Data used for transmitting and receiving link margin and button state.
  */
+typedef enum data_msg_type {
+    DATA_MSG_NORMAL = 0,
+    DATA_MSG_RTT_PING = 1,
+    DATA_MSG_RTT_PONG = 2,
+} data_msg_type_t;
+
 typedef struct user_data {
     bool button_state;
     uint8_t link_margin;
-    uint32_t seq;
-    uint32_t tx_tick;
+
+    uint8_t msg_type;        // NORMAL / RTT_PING / RTT_PONG
+    uint8_t reserved[3];     // alignment용 (필수는 아니지만 권장)
+
+    uint32_t seq;            // RTT 식별용
+    uint32_t origin_tick;    // PING을 보낸 측(Coord)의 로컬 출발 시각
 } user_data_t;
 
 /* PRIVATE GLOBALS ************************************************************/
@@ -108,8 +118,6 @@ static const sac_sample_format_t BACK_CHANNEL_SAC_SAMPLE_FORMAT = {
     .bit_depth = SAC_16BITS,
     .sample_encoding = SAC_SAMPLE_PACKED,
 };
-
-static uint32_t g_data_seq = 0;
 
 static volatile uint32_t g_last_seq = 0;
 static volatile uint32_t g_last_tx_tick = 0;
@@ -627,53 +635,45 @@ static void conn_rx_data_success_callback(void *conn)
 {
     sac_status_t sac_status = SAC_OK;
     swc_error_t swc_err = SWC_ERR_NONE;
+    swc_fallback_info_t fallback_info = {0};
     user_data_t received_user_data = {0};
+    user_data_t reply_user_data = {0};
     uint16_t read_data_size;
-    uint32_t rx_tick;
 
     (void)conn;
 
-    /* Get received payload. */
     read_data_size = wireless_read_data(&received_user_data, sizeof(received_user_data), &swc_err);
     ASSERT_SWC_STATUS(swc_err);
 
-    if (read_data_size > 0) {
-        rx_tick = facade_get_tick_ms();
-
-        g_last_seq = received_user_data.seq;
-        g_last_tx_tick = received_user_data.tx_tick;
-        g_last_rx_tick = rx_tick;
-        int32_t signed_diff;
-
-        signed_diff = (int32_t)rx_tick - (int32_t)received_user_data.tx_tick;
-
-        if (signed_diff < 0) {
-            g_last_latency_ms = (uint32_t)(-signed_diff);
-        } else {
-            g_last_latency_ms = (uint32_t)signed_diff;
-        }
-
-        g_latency_count++;
-        g_latency_sum_ms += g_last_latency_ms;
-
-        if (g_last_latency_ms < g_latency_min_ms) {
-            g_latency_min_ms = g_last_latency_ms;
-        }
-        if (g_last_latency_ms > g_latency_max_ms) {
-            g_latency_max_ms = g_last_latency_ms;
-        }
-
-        /* Depending on the requested button state from the Node, the specified LED turns on or off. */
-        if (received_user_data.button_state == false) {
-            facade_empty_payload_received_status();
-        } else {
-            facade_payload_received_status();
-        }
-
-        /* The fallback state is updated. */
-        sac_fallback_set_rx_link_margin(&back_channel_fallback_instance, received_user_data.link_margin, &sac_status);
-        ASSERT_SAC_STATUS(sac_status);
+    if (read_data_size == 0) {
+        return;
     }
+
+    if (received_user_data.msg_type == DATA_MSG_RTT_PING) {
+        reply_user_data = received_user_data;   // seq, origin_tick 그대로 복사
+        reply_user_data.msg_type = DATA_MSG_RTT_PONG;
+
+        // 필요하면 Node 현재 button/link_margin으로 덮어써도 됨
+        reply_user_data.button_state = facade_read_button_state();
+
+        fallback_info = swc_connection_get_fallback_info(rx_audio_conn, &swc_err);
+        ASSERT_SWC_STATUS(swc_err);
+        reply_user_data.link_margin = fallback_info.link_margin;
+
+        wireless_send_data(&reply_user_data, sizeof(reply_user_data), &swc_err);
+        ASSERT_SWC_STATUS(swc_err);
+    }
+
+    if (received_user_data.button_state == false) {
+        facade_empty_payload_received_status();
+    } else {
+        facade_payload_received_status();
+    }
+
+    sac_fallback_set_rx_link_margin(&back_channel_fallback_instance,
+                                    received_user_data.link_margin,
+                                    &sac_status);
+    ASSERT_SAC_STATUS(sac_status);
 }
 
 /** @brief Callback function when a previously sent audio frame has been ACK'd.
@@ -1339,18 +1339,15 @@ static void data_callback(void)
     swc_fallback_info_t fallback_info = {0};
     user_data_t transmitted_user_data = {0};
 
-    /* Update the link margin and the button state. */
     fallback_info = swc_connection_get_fallback_info(rx_audio_conn, &swc_err);
     ASSERT_SWC_STATUS(swc_err);
 
     transmitted_user_data.link_margin = fallback_info.link_margin;
     transmitted_user_data.button_state = facade_read_button_state();
+    transmitted_user_data.msg_type = DATA_MSG_NORMAL;
+    transmitted_user_data.seq = 0;
+    transmitted_user_data.origin_tick = 0;
 
-    /* Latency measurement fields */
-    transmitted_user_data.seq = g_data_seq++;
-    transmitted_user_data.tx_tick = facade_get_tick_ms();
-
-    /* Send the button state to the Coordinator. */
     wireless_send_data(&transmitted_user_data, sizeof(transmitted_user_data), &swc_err);
 }
 
