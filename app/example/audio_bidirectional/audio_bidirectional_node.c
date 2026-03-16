@@ -84,10 +84,10 @@ typedef enum connection_priority {
 /** @brief Data used for transmitting and receiving link margin and button state.
  */
 typedef struct user_data {
-    /*! A boolean indicating the button's state. */
     bool button_state;
-    /*! The link margin to monitor link quality. */
     uint8_t link_margin;
+    uint32_t seq;
+    uint32_t tx_tick;
 } user_data_t;
 
 /* PRIVATE GLOBALS ************************************************************/
@@ -108,6 +108,18 @@ static const sac_sample_format_t BACK_CHANNEL_SAC_SAMPLE_FORMAT = {
     .bit_depth = SAC_16BITS,
     .sample_encoding = SAC_SAMPLE_PACKED,
 };
+
+static uint32_t g_data_seq = 0;
+
+static volatile uint32_t g_last_seq = 0;
+static volatile uint32_t g_last_tx_tick = 0;
+static volatile uint32_t g_last_rx_tick = 0;
+static volatile uint32_t g_last_latency_ms = 0;
+
+static volatile uint32_t g_latency_count = 0;
+static volatile uint32_t g_latency_min_ms = 0xFFFFFFFF;
+static volatile uint32_t g_latency_max_ms = 0;
+static volatile uint64_t g_latency_sum_ms = 0;
 
 static uint8_t audio_memory_pool[SAC_MEM_POOL_SIZE];
 static sac_pipeline_t *main_channel_sac_pipeline;
@@ -617,6 +629,7 @@ static void conn_rx_data_success_callback(void *conn)
     swc_error_t swc_err = SWC_ERR_NONE;
     user_data_t received_user_data = {0};
     uint16_t read_data_size;
+    uint32_t rx_tick;
 
     (void)conn;
 
@@ -625,6 +638,31 @@ static void conn_rx_data_success_callback(void *conn)
     ASSERT_SWC_STATUS(swc_err);
 
     if (read_data_size > 0) {
+        rx_tick = facade_get_tick_ms();
+
+        g_last_seq = received_user_data.seq;
+        g_last_tx_tick = received_user_data.tx_tick;
+        g_last_rx_tick = rx_tick;
+        int32_t signed_diff;
+
+        signed_diff = (int32_t)rx_tick - (int32_t)received_user_data.tx_tick;
+
+        if (signed_diff < 0) {
+            g_last_latency_ms = (uint32_t)(-signed_diff);
+        } else {
+            g_last_latency_ms = (uint32_t)signed_diff;
+        }
+
+        g_latency_count++;
+        g_latency_sum_ms += g_last_latency_ms;
+
+        if (g_last_latency_ms < g_latency_min_ms) {
+            g_latency_min_ms = g_last_latency_ms;
+        }
+        if (g_last_latency_ms > g_latency_max_ms) {
+            g_latency_max_ms = g_last_latency_ms;
+        }
+
         /* Depending on the requested button state from the Node, the specified LED turns on or off. */
         if (received_user_data.button_state == false) {
             facade_empty_payload_received_status();
@@ -1264,6 +1302,31 @@ static void print_stats(void)
     string_length += swc_connection_format_stats(rx_data_conn, node, stats_string + string_length,
                                                  sizeof(stats_string) - string_length, &swc_err);
     ASSERT_SWC_STATUS(swc_err);
+    double avg_latency_ms = 0.0;
+
+    if (g_latency_count > 0) {
+        avg_latency_ms = (double)g_latency_sum_ms / g_latency_count;
+    }
+
+    string_length += snprintf(stats_string + string_length,
+                            sizeof(stats_string) - string_length,
+                            "\n<<  Latency Debug  >>\n\r"
+                            "Last Seq:\t\t\t%10lu\r\n"
+                            "Last TX Tick:\t\t\t%10lu\r\n"
+                            "Last RX Tick:\t\t\t%10lu\r\n"
+                            "Last Latency:\t\t\t%10lu ms\r\n"
+                            "Min Latency:\t\t\t%10lu ms\r\n"
+                            "Max Latency:\t\t\t%10lu ms\r\n"
+                            "Avg Latency:\t\t\t%10.2f ms\r\n"
+                            "Sample Count:\t\t\t%10lu\r\n",
+                            (unsigned long)g_last_seq,
+                            (unsigned long)g_last_tx_tick,
+                            (unsigned long)g_last_rx_tick,
+                            (unsigned long)g_last_latency_ms,
+                            (unsigned long)(g_latency_count ? g_latency_min_ms : 0),
+                            (unsigned long)g_latency_max_ms,
+                            avg_latency_ms,
+                            (unsigned long)g_latency_count);
 
     facade_print_string(stats_string);
 }
@@ -1282,6 +1345,10 @@ static void data_callback(void)
 
     transmitted_user_data.link_margin = fallback_info.link_margin;
     transmitted_user_data.button_state = facade_read_button_state();
+
+    /* Latency measurement fields */
+    transmitted_user_data.seq = g_data_seq++;
+    transmitted_user_data.tx_tick = facade_get_tick_ms();
 
     /* Send the button state to the Coordinator. */
     wireless_send_data(&transmitted_user_data, sizeof(transmitted_user_data), &swc_err);
