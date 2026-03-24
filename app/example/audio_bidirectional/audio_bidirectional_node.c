@@ -643,25 +643,33 @@ static void conn_rx_data_success_callback(void *conn)
     (void)conn;
 
     read_data_size = wireless_read_data(&received_user_data, sizeof(received_user_data), &swc_err);
-    ASSERT_SWC_STATUS(swc_err);
+    if (swc_err != SWC_ERR_NONE) {
+        return;
+    }
 
-    if (read_data_size == 0) {
+    if (read_data_size != sizeof(received_user_data)) {
         return;
     }
 
     if (received_user_data.msg_type == DATA_MSG_RTT_PING) {
-        reply_user_data = received_user_data;   // seq, origin_tick 그대로 복사
+        reply_user_data = received_user_data;
         reply_user_data.msg_type = DATA_MSG_RTT_PONG;
 
-        // 필요하면 Node 현재 button/link_margin으로 덮어써도 됨
         reply_user_data.button_state = facade_read_button_state();
 
         fallback_info = swc_connection_get_fallback_info(rx_audio_conn, &swc_err);
-        ASSERT_SWC_STATUS(swc_err);
-        reply_user_data.link_margin = fallback_info.link_margin;
+        if (swc_err == SWC_ERR_NONE) {
+            reply_user_data.link_margin = fallback_info.link_margin;
+        } else {
+            /* 실패 시 기본값 유지 또는 0으로 설정 */
+            reply_user_data.link_margin = 0;
+            swc_err = SWC_ERR_NONE;
+        }
 
         wireless_send_data(&reply_user_data, sizeof(reply_user_data), &swc_err);
-        ASSERT_SWC_STATUS(swc_err);
+        if (swc_err != SWC_ERR_NONE) {
+            return;
+        }
     }
 
     if (received_user_data.button_state == false) {
@@ -673,7 +681,9 @@ static void conn_rx_data_success_callback(void *conn)
     sac_fallback_set_rx_link_margin(&back_channel_fallback_instance,
                                     received_user_data.link_margin,
                                     &sac_status);
-    ASSERT_SAC_STATUS(sac_status);
+    if (sac_status != SAC_OK) {
+        return;
+    }
 }
 
 /** @brief Callback function when a previously sent audio frame has been ACK'd.
@@ -1499,24 +1509,31 @@ static uint16_t wireless_read_data(void *received_data, uint8_t size, swc_error_
 {
     uint8_t *payload = NULL;
     uint16_t payload_size = 0;
+    uint16_t copied_size = 0;
 
     /* Read received data. */
     payload_size = swc_connection_receive(rx_data_conn, &payload, swc_err);
-    ASSERT_SWC_STATUS(*swc_err);
+    if (*swc_err != SWC_ERR_NONE) {
+        return 0;
+    }
 
+    if ((payload != NULL) && (received_data != NULL)) {
+        copied_size = (payload_size <= size) ? payload_size : size;
+        memcpy(received_data, payload, copied_size);
+    }
+
+    /* 반드시 RX payload 반환 */
+    swc_connection_receive_complete(rx_data_conn, swc_err);
+    if (*swc_err != SWC_ERR_NONE) {
+        return 0;
+    }
+
+    /* payload가 기대보다 크면 이상 패킷으로 보고 무시 */
     if (payload_size > size) {
         return 0;
     }
 
-    if (received_data != NULL) {
-        memcpy(received_data, payload, payload_size);
-    }
-
-    /* Free the payload memory. */
-    swc_connection_receive_complete(rx_data_conn, swc_err);
-    ASSERT_SWC_STATUS(*swc_err);
-
-    return payload_size;
+    return copied_size;
 }
 
 /** @brief Initialize the application.

@@ -664,9 +664,11 @@ static void conn_rx_data_success_callback(void *conn)
     (void)conn;
 
     read_data_size = wireless_read_data(&received_user_data, sizeof(received_user_data), &swc_err);
-    ASSERT_SWC_STATUS(swc_err);
+    if (swc_err != SWC_ERR_NONE) {
+        return;
+    }
 
-    if (read_data_size == 0) {
+    if (read_data_size != sizeof(received_user_data)) {
         return;
     }
 
@@ -683,8 +685,13 @@ static void conn_rx_data_success_callback(void *conn)
 
             g_latency_count++;
             g_latency_sum_ms += rtt_ms;
-            if (rtt_ms < g_latency_min_ms) g_latency_min_ms = rtt_ms;
-            if (rtt_ms > g_latency_max_ms) g_latency_max_ms = rtt_ms;
+
+            if (rtt_ms < g_latency_min_ms) {
+                g_latency_min_ms = rtt_ms;
+            }
+            if (rtt_ms > g_latency_max_ms) {
+                g_latency_max_ms = rtt_ms;
+            }
 
             g_rtt_waiting_reply = false;
         }
@@ -699,7 +706,9 @@ static void conn_rx_data_success_callback(void *conn)
     sac_fallback_set_rx_link_margin(&main_channel_fallback_instance,
                                     received_user_data.link_margin,
                                     &sac_status);
-    ASSERT_SAC_STATUS(sac_status);
+    if (sac_status != SAC_OK) {
+        return;
+    }
 }
 
 /** @brief Initialize the Audio Core.
@@ -1552,24 +1561,31 @@ static uint16_t wireless_read_data(void *received_data, uint8_t size, swc_error_
 {
     uint8_t *payload = NULL;
     uint16_t payload_size = 0;
+    uint16_t copied_size = 0;
 
     /* Read received data. */
     payload_size = swc_connection_receive(rx_data_conn, &payload, swc_err);
-    ASSERT_SWC_STATUS(*swc_err);
+    if (*swc_err != SWC_ERR_NONE) {
+        return 0;
+    }
 
+    if ((payload != NULL) && (received_data != NULL)) {
+        copied_size = (payload_size <= size) ? payload_size : size;
+        memcpy(received_data, payload, copied_size);
+    }
+
+    /* 반드시 RX payload 반환 */
+    swc_connection_receive_complete(rx_data_conn, swc_err);
+    if (*swc_err != SWC_ERR_NONE) {
+        return 0;
+    }
+
+    /* payload가 기대보다 크면 이상 패킷으로 보고 무시 */
     if (payload_size > size) {
         return 0;
     }
 
-    if (received_data != NULL) {
-        memcpy(received_data, payload, payload_size);
-    }
-
-    /* Free the payload memory. */
-    swc_connection_receive_complete(rx_data_conn, swc_err);
-    ASSERT_SWC_STATUS(*swc_err);
-
-    return payload_size;
+    return copied_size;
 }
 
 /** @brief Initialize the application.
