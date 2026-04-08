@@ -1406,17 +1406,19 @@ static void data_callback(void)
 
     ping_div++;
     if ((ping_div >= 10) && (g_rtt_waiting_reply == false)) {
+        uint32_t seq_to_send;
         ping_div = 0;
-
+        seq_to_send = g_rtt_seq;
         transmitted_user_data.msg_type = DATA_MSG_RTT_PING;
-        transmitted_user_data.seq = g_rtt_seq++;
+        transmitted_user_data.seq = seq_to_send;
         transmitted_user_data.origin_tick = now;
 
         wireless_send_data(&transmitted_user_data, sizeof(transmitted_user_data), &swc_err);
 
         if (swc_err == SWC_ERR_NONE) {
+            g_rtt_seq++;
             g_rtt_waiting_reply = true;
-            g_rtt_last_ping_seq = transmitted_user_data.seq;
+            g_rtt_last_ping_seq = seq_to_send;
             g_rtt_last_ping_tick = transmitted_user_data.origin_tick;
         } else {
             g_rtt_waiting_reply = false;

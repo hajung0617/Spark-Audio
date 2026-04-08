@@ -119,16 +119,6 @@ static const sac_sample_format_t BACK_CHANNEL_SAC_SAMPLE_FORMAT = {
     .sample_encoding = SAC_SAMPLE_PACKED,
 };
 
-static volatile uint32_t g_last_seq = 0;
-static volatile uint32_t g_last_tx_tick = 0;
-static volatile uint32_t g_last_rx_tick = 0;
-static volatile uint32_t g_last_latency_ms = 0;
-
-static volatile uint32_t g_latency_count = 0;
-static volatile uint32_t g_latency_min_ms = 0xFFFFFFFF;
-static volatile uint32_t g_latency_max_ms = 0;
-static volatile uint64_t g_latency_sum_ms = 0;
-
 static uint8_t audio_memory_pool[SAC_MEM_POOL_SIZE];
 static sac_pipeline_t *main_channel_sac_pipeline;
 static sac_pipeline_t *back_channel_sac_pipeline;
@@ -1312,31 +1302,6 @@ static void print_stats(void)
     string_length += swc_connection_format_stats(rx_data_conn, node, stats_string + string_length,
                                                  sizeof(stats_string) - string_length, &swc_err);
     ASSERT_SWC_STATUS(swc_err);
-    double avg_latency_ms = 0.0;
-
-    if (g_latency_count > 0) {
-        avg_latency_ms = (double)g_latency_sum_ms / g_latency_count;
-    }
-
-    string_length += snprintf(stats_string + string_length,
-                            sizeof(stats_string) - string_length,
-                            "\n<<  Latency Debug  >>\n\r"
-                            "Last Seq:\t\t\t%10lu\r\n"
-                            "Last TX Tick:\t\t\t%10lu\r\n"
-                            "Last RX Tick:\t\t\t%10lu\r\n"
-                            "Last Latency:\t\t\t%10lu ms\r\n"
-                            "Min Latency:\t\t\t%10lu ms\r\n"
-                            "Max Latency:\t\t\t%10lu ms\r\n"
-                            "Avg Latency:\t\t\t%10.2f ms\r\n"
-                            "Sample Count:\t\t\t%10lu\r\n",
-                            (unsigned long)g_last_seq,
-                            (unsigned long)g_last_tx_tick,
-                            (unsigned long)g_last_rx_tick,
-                            (unsigned long)g_last_latency_ms,
-                            (unsigned long)(g_latency_count ? g_latency_min_ms : 0),
-                            (unsigned long)g_latency_max_ms,
-                            avg_latency_ms,
-                            (unsigned long)g_latency_count);
 
     facade_print_string(stats_string);
 }
