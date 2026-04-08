@@ -94,10 +94,10 @@ typedef struct user_data {
     uint8_t link_margin;
 
     uint8_t msg_type;        // NORMAL / RTT_PING / RTT_PONG
-    uint8_t reserved[3];     // alignment용 (필수는 아니지만 권장)
+    uint8_t reserved[3];     // Reserved for alignment.
 
-    uint32_t seq;            // RTT 식별용
-    uint32_t origin_tick;    // PING을 보낸 측(Coord)의 로컬 출발 시각
+    uint32_t seq;            // RTT sequence identifier.
+    uint32_t origin_tick;    // Local tick when the Coordinator sent the ping.
 } user_data_t;
 
 /* PRIVATE GLOBALS ************************************************************/
@@ -661,7 +661,7 @@ static void conn_rx_data_success_callback(void *conn)
         if (swc_err == SWC_ERR_NONE) {
             reply_user_data.link_margin = fallback_info.link_margin;
         } else {
-            /* 실패 시 기본값 유지 또는 0으로 설정 */
+            /* Keep the default value and fall back to zero on failure. */
             reply_user_data.link_margin = 0;
             swc_err = SWC_ERR_NONE;
         }
@@ -1522,13 +1522,13 @@ static uint16_t wireless_read_data(void *received_data, uint8_t size, swc_error_
         memcpy(received_data, payload, copied_size);
     }
 
-    /* 반드시 RX payload 반환 */
+    /* Always release the RX payload. */
     swc_connection_receive_complete(rx_data_conn, swc_err);
     if (*swc_err != SWC_ERR_NONE) {
         return 0;
     }
 
-    /* payload가 기대보다 크면 이상 패킷으로 보고 무시 */
+    /* Ignore packets larger than the destination buffer. */
     if (payload_size > size) {
         return 0;
     }

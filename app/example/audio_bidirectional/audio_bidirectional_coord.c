@@ -52,6 +52,7 @@
 #define ERROR_MESSAGE_BUFFER_SIZE 50
 /* Interval to print statistics in ms. */
 #define PRINT_INTERVAL_MS 1000
+#define RTT_TIMEOUT_MS 500
 
 /* **** CDC **** */
 /* Maximum amount of drift to compensate. */
@@ -99,10 +100,10 @@ typedef struct user_data {
     uint8_t link_margin;
 
     uint8_t msg_type;        // NORMAL / RTT_PING / RTT_PONG
-    uint8_t reserved[3];     // alignment용 (필수는 아니지만 권장)
+    uint8_t reserved[3];     // Reserved for alignment.
 
-    uint32_t seq;            // RTT 식별용
-    uint32_t origin_tick;    // PING을 보낸 측(Coord)의 로컬 출발 시각
+    uint32_t seq;            // RTT sequence identifier.
+    uint32_t origin_tick;    // Local tick when the Coordinator sent the ping.
 } user_data_t;
 /* PRIVATE GLOBALS ************************************************************/
 /* **** Audio Core **** */
@@ -1384,6 +1385,7 @@ static void data_callback(void)
     swc_fallback_info_t fallback_info = {0};
     user_data_t transmitted_user_data = {0};
     static uint32_t ping_div = 0;
+    uint32_t now = facade_get_tick_ms();
 
     fallback_info = swc_connection_get_fallback_info(rx_audio_conn, &swc_err);
     ASSERT_SWC_STATUS(swc_err);
@@ -1394,17 +1396,28 @@ static void data_callback(void)
     transmitted_user_data.seq = 0;
     transmitted_user_data.origin_tick = 0;
 
+    if (g_rtt_waiting_reply && ((now - g_rtt_last_ping_tick) > RTT_TIMEOUT_MS)) {
+        g_rtt_waiting_reply = false;
+    }
+
     ping_div++;
-    if ((ping_div >= 10) && (g_rtt_waiting_reply == false)) {  // 10ms * 10 = 100ms
+    if ((ping_div >= 10) && (g_rtt_waiting_reply == false)) {
         ping_div = 0;
 
         transmitted_user_data.msg_type = DATA_MSG_RTT_PING;
         transmitted_user_data.seq = g_rtt_seq++;
-        transmitted_user_data.origin_tick = facade_get_tick_ms();
+        transmitted_user_data.origin_tick = now;
 
-        g_rtt_waiting_reply = true;
-        g_rtt_last_ping_seq = transmitted_user_data.seq;
-        g_rtt_last_ping_tick = transmitted_user_data.origin_tick;
+        wireless_send_data(&transmitted_user_data, sizeof(transmitted_user_data), &swc_err);
+
+        if (swc_err == SWC_ERR_NONE) {
+            g_rtt_waiting_reply = true;
+            g_rtt_last_ping_seq = transmitted_user_data.seq;
+            g_rtt_last_ping_tick = transmitted_user_data.origin_tick;
+        } else {
+            g_rtt_waiting_reply = false;
+        }
+        return;
     }
 
     wireless_send_data(&transmitted_user_data, sizeof(transmitted_user_data), &swc_err);
@@ -1574,13 +1587,13 @@ static uint16_t wireless_read_data(void *received_data, uint8_t size, swc_error_
         memcpy(received_data, payload, copied_size);
     }
 
-    /* 반드시 RX payload 반환 */
+    /* Always release the RX payload. */
     swc_connection_receive_complete(rx_data_conn, swc_err);
     if (*swc_err != SWC_ERR_NONE) {
         return 0;
     }
 
-    /* payload가 기대보다 크면 이상 패킷으로 보고 무시 */
+    /* Ignore packets larger than the destination buffer. */
     if (payload_size > size) {
         return 0;
     }
