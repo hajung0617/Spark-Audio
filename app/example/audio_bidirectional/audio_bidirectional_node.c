@@ -1350,9 +1350,12 @@ static void data_callback(void)
     user_data_t transmitted_user_data = {0};
 
     fallback_info = swc_connection_get_fallback_info(rx_audio_conn, &swc_err);
-    ASSERT_SWC_STATUS(swc_err);
-
-    transmitted_user_data.link_margin = fallback_info.link_margin;
+    if (swc_err != SWC_ERR_NONE) {
+        transmitted_user_data.link_margin = 0;
+        swc_err = SWC_ERR_NONE;
+    } else {
+        transmitted_user_data.link_margin = fallback_info.link_margin;
+    }
     transmitted_user_data.button_state = facade_read_button_state();
     transmitted_user_data.msg_type = DATA_MSG_NORMAL;
     transmitted_user_data.seq = 0;
@@ -1494,7 +1497,9 @@ static void wireless_send_data(void *transmitted_data, uint8_t size, swc_error_t
 
     /* Send the payload through the Wireless Core. */
     swc_connection_send(tx_data_conn, buffer, size, swc_err);
-    ASSERT_SWC_STATUS(*swc_err);
+    if (*swc_err != SWC_ERR_NONE) {
+        return;
+    }
 }
 
 /** @brief Read data from a specific connection.
